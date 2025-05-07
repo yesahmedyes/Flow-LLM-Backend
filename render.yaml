@@ -7,4 +7,3 @@ services:
     envVars:
       - key: ENV
         value: production
-    preDeployCommand: apt-get update && apt-get install -y tesseract-ocr libtesseract-dev
