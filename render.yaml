@@ -2,8 +2,9 @@ services:
   - type: web
     name: fastapi-app
     runtime: python
-    buildCommand: ./build.sh
+    buildCommand: pip install -r requirements.txt && apt-get update && apt-get install -y tesseract-ocr libtesseract-dev
     startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
     envVars:
       - key: ENV
         value: production
+    preDeployCommand: apt-get update && apt-get install -y tesseract-ocr libtesseract-dev
