@@ -27,7 +27,7 @@ redis_token = os.getenv("UPSTASH_REDIS_TOKEN")
 redis = Redis(url=redis_url, token=redis_token)
 
 
-QUEUE_NAME = "files-to-parse"
+QUEUE_NAME = "files-to-process"
 
 
 @app.post("/api/parse-and-embed")
