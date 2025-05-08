@@ -1,4 +1,5 @@
 import asyncio
+import json
 import cohere
 from PIL import Image
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import uuid
 
-from s3_handler import upload_images_to_s3
+from s3_handler import upload_images_to_s3, download_file_from_s3
 from parsers import parse_pdf, parse_image
 
 from pinecone import Pinecone
@@ -44,9 +45,10 @@ def chunk_text(texts):
     return chunks
 
 
-async def handle_pdf(object_name):
+async def handle_pdf(user_id, object_name):
     logger.info("Parsing PDF")
-    document_name = object_name.split(".")[0]
+
+    path = user_id + "/" + object_name.split(".")[0]
 
     all_text, images, captions = await parse_pdf(object_name)
 
@@ -54,7 +56,7 @@ async def handle_pdf(object_name):
 
     logger.info("Uploading images")
 
-    upload_task = upload_images_to_s3(document_name, images)
+    upload_task = upload_images_to_s3(path, images)
 
     logger.info("Embedding text")
 
@@ -85,7 +87,7 @@ async def handle_pdf(object_name):
                 "values": embeddings.embeddings.float_[len(chunks) + i],
                 "metadata": {
                     "text": caption,
-                    "image_path": f"{document_name}/image{i}.png",
+                    "image_path": f"{path}/image{i}.png",
                     "object_name": object_name,
                 },
             }
@@ -175,3 +177,22 @@ async def handle_text(object_name):
 
 async def upload_vectors(user_id, vector_embeddings):
     await asyncio.to_thread(index.upsert, vectors=vector_embeddings, namespace=user_id)
+
+
+async def process_item(file_url, user_id):
+    object_name = download_file_from_s3("flowllm-bucket", user_id, file_url)
+
+    if object_name.endswith(".pdf"):
+        vector_embeddings = await handle_pdf(user_id, object_name)
+    elif object_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".tiff", ".webp")):
+        vector_embeddings = await handle_image(object_name)
+    elif object_name.endswith(".txt"):
+        vector_embeddings = await handle_text(object_name)
+    else:
+        logger.error(f"Unsupported file type: {object_name}")
+        return
+
+    if vector_embeddings:
+        await upload_vectors(user_id, vector_embeddings)
+
+    os.remove(object_name)
