@@ -45,12 +45,12 @@ def chunk_text(texts):
     return chunks
 
 
-async def handle_pdf(user_id, object_name):
+async def handle_pdf(user_id, document_name):
     logger.info("Parsing PDF")
 
-    path = user_id + "/" + object_name.split(".")[0]
+    path = user_id + "/" + document_name.split(".")[0]
 
-    all_text, images, captions = await parse_pdf(object_name)
+    all_text, images, captions = await parse_pdf(document_name)
 
     chunks = chunk_text(all_text)
 
@@ -71,33 +71,39 @@ async def handle_pdf(user_id, object_name):
 
     vectors = []
 
+    vector_index = 0
+
     for chunk in chunks:
         vectors.append(
             {
-                "id": str(uuid.uuid4()),
+                "id": document_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[chunks.index(chunk)],
-                "metadata": {"text": chunk, "object_name": object_name},
+                "metadata": {"text": chunk, "document_name": document_name},
             }
         )
+
+        vector_index += 1
 
     for i, caption in enumerate(captions):
         vectors.append(
             {
-                "id": str(uuid.uuid4()),
+                "id": document_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[len(chunks) + i],
                 "metadata": {
                     "text": caption,
                     "image_path": f"{path}/image{i}.png",
-                    "object_name": object_name,
+                    "document_name": document_name,
                 },
             }
         )
 
+        vector_index += 1
+
     return vectors
 
 
-async def handle_image(object_name):
-    image = Image.open(object_name)
+async def handle_image(document_name):
+    image = Image.open(document_name)
 
     logger.info("Parsing image")
 
@@ -119,24 +125,28 @@ async def handle_image(object_name):
 
     vectors = []
 
+    vector_index = 0
+
     if needs_ocr:
         for chunk in chunks:
             vectors.append(
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": document_name + "_" + str(vector_index),
                     "values": embeddings.embeddings.float_[chunks.index(chunk)],
-                    "metadata": {"text": chunk, "object_name": object_name},
+                    "metadata": {"text": chunk, "document_name": document_name},
                 }
             )
+
+            vector_index += 1
     else:
         vectors.append(
             {
-                "id": str(uuid.uuid4()),
+                "id": document_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[0],
                 "metadata": {
                     "text": text,
-                    "image_path": object_name,
-                    "object_name": object_name,
+                    "image_path": document_name,
+                    "document_name": document_name,
                 },
             }
         )
@@ -144,10 +154,10 @@ async def handle_image(object_name):
     return vectors
 
 
-async def handle_text(object_name):
+async def handle_text(document_name):
     logger.info("Reading text")
 
-    with open(object_name, "r") as f:
+    with open(document_name, "r") as f:
         text = f.read()
 
     chunks = chunk_text(text)
@@ -163,14 +173,18 @@ async def handle_text(object_name):
 
     vectors = []
 
+    vector_index = 0
+
     for chunk in chunks:
         vectors.append(
             {
-                "id": str(uuid.uuid4()),
+                "id": document_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[chunks.index(chunk)],
-                "metadata": {"text": chunk, "object_name": object_name},
+                "metadata": {"text": chunk, "document_name": document_name},
             }
         )
+
+        vector_index += 1
 
     return vectors
 
@@ -180,19 +194,19 @@ async def upload_vectors(user_id, vector_embeddings):
 
 
 async def process_item(file_url, user_id):
-    object_name = download_file_from_s3("flowllm-bucket", user_id, file_url)
+    document_name = download_file_from_s3("flowllm-bucket", user_id, file_url)
 
-    if object_name.endswith(".pdf"):
-        vector_embeddings = await handle_pdf(user_id, object_name)
-    elif object_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".tiff", ".webp")):
-        vector_embeddings = await handle_image(object_name)
-    elif object_name.endswith(".txt"):
-        vector_embeddings = await handle_text(object_name)
+    if document_name.endswith(".pdf"):
+        vector_embeddings = await handle_pdf(user_id, document_name)
+    elif document_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".tiff", ".webp")):
+        vector_embeddings = await handle_image(document_name)
+    elif document_name.endswith(".txt"):
+        vector_embeddings = await handle_text(document_name)
     else:
-        logger.error(f"Unsupported file type: {object_name}")
+        logger.error(f"Unsupported file type: {document_name}")
         return
 
     if vector_embeddings:
         await upload_vectors(user_id, vector_embeddings)
 
-    os.remove(object_name)
+    os.remove(document_name)
