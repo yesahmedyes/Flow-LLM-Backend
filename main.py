@@ -30,6 +30,11 @@ redis = Redis(url=redis_url, token=redis_token)
 QUEUE_NAME = "files-to-process"
 
 
+@app.get("/")
+def read_root():
+    return {"message": "Hello, world!"}
+
+
 @app.post("/api/parse-and-embed")
 async def parse_and_embed() -> None:
     while True:
