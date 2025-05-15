@@ -39,7 +39,7 @@ async def parse_pdf_page(page):
     for img in page.images:
         dim = (img["x0"], img["top"], img["x1"], img["bottom"])
 
-        image = page.crop(dim).to_image(resolution=300).original
+        image = page.crop(dim, strict=False).to_image(resolution=300).original
 
         tasks.append(parse_image(image))
 

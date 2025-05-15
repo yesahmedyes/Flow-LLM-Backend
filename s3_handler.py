@@ -16,6 +16,7 @@ s3 = boto3.client(
     aws_access_key_id=AWS_ACCESS_KEY,
     aws_secret_access_key=AWS_SECRET_KEY,
     region_name=AWS_REGION,
+    config=boto3.session.Config(max_pool_connections=25),
 )
 
 
@@ -33,14 +34,19 @@ def download_file_from_s3(bucket, user_id, file_url):
     return document_name
 
 
-async def upload_single_image(path, image, i):
-    def upload():
-        buffer = BytesIO()
-        image.save(buffer, format="JPEG")
-        buffer.seek(0)
-        s3.upload_fileobj(buffer, "flowllm-bucket", f"{path}/image{i}.png")
+semaphore = asyncio.Semaphore(25)
 
-    await asyncio.to_thread(upload)
+
+async def upload_single_image(path, image, i):
+    async with semaphore:
+
+        def upload():
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG")
+            buffer.seek(0)
+            s3.upload_fileobj(buffer, "flowllm-bucket", f"{path}/image{i}.png")
+
+        await asyncio.to_thread(upload)
 
 
 async def upload_images_to_s3(path, images):
