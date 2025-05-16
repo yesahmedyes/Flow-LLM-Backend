@@ -7,7 +7,6 @@ import os
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-import uuid
 
 from s3_handler import upload_images_to_s3, download_file_from_s3
 from parsers import parse_pdf, parse_image
@@ -45,10 +44,10 @@ def chunk_text(texts):
     return chunks
 
 
-async def handle_pdf(user_id, document_name):
+async def handle_pdf(user_id, folder_name, document_name):
     logger.info("Parsing PDF")
 
-    path = user_id + "/" + document_name.split(".")[0]
+    path = user_id + "/" + folder_name + "/extracted"
 
     all_text, images, captions = await parse_pdf(document_name)
 
@@ -76,7 +75,7 @@ async def handle_pdf(user_id, document_name):
     for chunk in chunks:
         vectors.append(
             {
-                "id": document_name + "_" + str(vector_index),
+                "id": folder_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[chunks.index(chunk)],
                 "metadata": {"text": chunk, "document_name": document_name},
             }
@@ -87,7 +86,7 @@ async def handle_pdf(user_id, document_name):
     for i, caption in enumerate(captions):
         vectors.append(
             {
-                "id": document_name + "_" + str(vector_index),
+                "id": folder_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[len(chunks) + i],
                 "metadata": {
                     "text": caption,
@@ -102,7 +101,7 @@ async def handle_pdf(user_id, document_name):
     return vectors
 
 
-async def handle_image(document_name):
+async def handle_image(folder_name, document_name):
     image = Image.open(document_name)
 
     logger.info("Parsing image")
@@ -131,7 +130,7 @@ async def handle_image(document_name):
         for chunk in chunks:
             vectors.append(
                 {
-                    "id": document_name + "_" + str(vector_index),
+                    "id": folder_name + "_" + str(vector_index),
                     "values": embeddings.embeddings.float_[chunks.index(chunk)],
                     "metadata": {"text": chunk, "document_name": document_name},
                 }
@@ -141,7 +140,7 @@ async def handle_image(document_name):
     else:
         vectors.append(
             {
-                "id": document_name + "_" + str(vector_index),
+                "id": folder_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[0],
                 "metadata": {
                     "text": text,
@@ -154,7 +153,7 @@ async def handle_image(document_name):
     return vectors
 
 
-async def handle_text(document_name):
+async def handle_text(folder_name, document_name):
     logger.info("Reading text")
 
     with open(document_name, "r") as f:
@@ -178,7 +177,7 @@ async def handle_text(document_name):
     for chunk in chunks:
         vectors.append(
             {
-                "id": document_name + "_" + str(vector_index),
+                "id": folder_name + "_" + str(vector_index),
                 "values": embeddings.embeddings.float_[chunks.index(chunk)],
                 "metadata": {"text": chunk, "document_name": document_name},
             }
@@ -194,14 +193,16 @@ async def upload_vectors(user_id, vector_embeddings):
 
 
 async def process_item(file_url, user_id):
-    document_name = download_file_from_s3("flowllm-bucket", user_id, file_url)
+    folder_name, document_name = download_file_from_s3(
+        "flowllm-bucket", user_id, file_url
+    )
 
     if document_name.endswith(".pdf"):
-        vector_embeddings = await handle_pdf(user_id, document_name)
+        vector_embeddings = await handle_pdf(user_id, folder_name, document_name)
     elif document_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".tiff", ".webp")):
-        vector_embeddings = await handle_image(document_name)
+        vector_embeddings = await handle_image(folder_name, document_name)
     elif document_name.endswith(".txt"):
-        vector_embeddings = await handle_text(document_name)
+        vector_embeddings = await handle_text(folder_name, document_name)
     else:
         logger.error(f"Unsupported file type: {document_name}")
         return

@@ -21,9 +21,12 @@ s3 = boto3.client(
 
 
 def download_file_from_s3(bucket, user_id, file_url):
-    document_name = file_url.split("/")[-1]
+    url_split = file_url.split("/")
 
-    object_name = user_id + "/" + document_name
+    folder_name = url_split[-2]
+    document_name = url_split[-1]
+
+    object_name = user_id + "/" + folder_name + "/" + document_name
 
     try:
         s3.download_file(bucket, object_name, document_name)
@@ -31,7 +34,7 @@ def download_file_from_s3(bucket, user_id, file_url):
         logger.error(f"Error downloading file from S3: {e}")
         raise e
 
-    return document_name
+    return folder_name, document_name
 
 
 semaphore = asyncio.Semaphore(25)
